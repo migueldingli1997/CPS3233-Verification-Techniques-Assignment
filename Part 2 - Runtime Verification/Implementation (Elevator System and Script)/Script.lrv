@@ -1,0 +1,202 @@
+IMPORTS{
+    import com.liftmania.gui.*;
+    import com.liftmania.*;
+    import java.util.*;
+}
+
+GLOBAL{
+
+    VARIABLES{
+        Map<Lift, Integer> destinations = new HashMap<>();
+        Set<Integer> summonsBeingServiced = new HashSet<>();
+    }
+
+    EVENTS{
+        floorSummon(int floorNumber) = {LiftController *.callLiftToFloor(floorNumber)}
+        moveLift(Lift lift, int floorNumber) = {LiftController *.moveLift(lift, floorNumber)}
+        setFloor(Lift lift, int floorNumber) = {lift.setFloor(floorNumber)}
+        getClosest(LiftController lc, int floorNumber, Object lifts) = {execution LiftController lc.getClosestStationaryLifts(floorNumber)uponReturning(lifts)}
+    }
+
+    PROPERTY temp2{
+        STATES{ BAD { bad } NORMAL { summon } STARTING { start } }
+        TRANSITIONS{
+            start  -> summon [ floorSummon ]
+            summon -> bad    [ moveLift \!summonsBeingServiced.add(floorNumber) ]
+            summon -> start  [ moveLift ]
+            start  -> start  [ setFloor \\summonsBeingServiced.remove(floorNumber); ]
+        }
+    }
+
+    PROPERTY temp3{
+        STATES{ BAD { bad } STARTING { start } }
+        TRANSITIONS{
+            start -> bad [ getClosest \!getBestLifts(lc.getLifts(), floorNumber, destinations).equals(lifts) ]
+            start -> start [ moveLift \\destinations.put(lift, floorNumber); ]
+            start -> start [ setFloor \floorNumber==destinations.getOrDefault(lift, -1) \destinations.remove(lift); ]
+        }
+    }
+
+    FOREACH(Lift l){
+
+        VARIABLES{
+            int reqOrSumm = 0;
+            Clock time1Clock = new Clock();
+            Clock time2Clock = new Clock();
+        }
+
+        EVENTS{
+            startOrStopMoving(boolean isNowMoving) = {Lift l1.setMoving(isNowMoving)} where l = l1;
+            requestOrSummon() = {LiftController *.moveLift(Lift l1, *)} where l = l1;
+            openDoors() = {Lift l1.openDoors()} where l = l1;
+            closeDoors() = {Lift l1.closeDoors()} where l = l1;
+            startClosingDoors() = {Lift l1.startClosingDoors()} where l = l1;
+            floorRequest() = {LiftController ctrl.moveLift(int liftNo, *)} where l = ctrl.getLifts()[liftNo];
+            clock1() = {time1Clock@3}
+            clock2() = {time2Clock@3}
+        }
+
+        PROPERTY invar1{
+            STATES{ BAD { bad } STARTING { start } }
+            TRANSITIONS{ start -> bad [ startOrStopMoving \isNowMoving && l.isOpen() ] }
+        }
+
+        PROPERTY invar3{
+            STATES{ BAD { bad } STARTING { start } }
+            TRANSITIONS{
+                start -> start [ requestOrSummon \\reqOrSumm++; ]
+                start -> bad [ startOrStopMoving \isNowMoving && reqOrSumm == 0 ]
+                start -> start [ startOrStopMoving \isNowMoving \reqOrSumm--; ]
+            }
+        }
+
+        PROPERTY invar4{
+            STATES{ BAD { bad } STARTING { start } }
+            TRANSITIONS{
+                start -> bad [ startOrStopMoving \!isNowMoving && l.isBetweenFloors() ]
+            }
+        }
+
+        PROPERTY invar5{
+            STATES{ BAD { bad } STARTING { start } }
+            TRANSITIONS{
+                start -> bad [ openDoors \l.isBetweenFloors() ]
+            }
+        }
+
+        PROPERTY temp4{
+            STATES{ BAD { bad } NORMAL { open } STARTING { closed } }
+            TRANSITIONS{
+                closed -> open [ openDoors ]
+                open -> closed [ closeDoors ]
+                closed -> bad [ closeDoors ]
+                open -> bad [ openDoors ]
+            }
+        }
+
+        PROPERTY temp5{
+            STATES{ BAD { bad } NORMAL { open closing summon } STARTING { closed } }
+            TRANSITIONS{
+                closed -> open [ openDoors ]
+                open -> closing [ startClosingDoors ]
+                closing -> closed [ closeDoors ]
+                closing -> summon [ floorSummon \floorNumber == l.getFloor() ]
+                summon -> open [ openDoors ]
+                summon -> bad [ closeDoors ]
+            }
+        }
+
+        %%PROPERTY temp6{
+        %%    STATES{
+        %%        BAD { bad }
+        %%        NORMAL { open summonHeld }
+        %%        STARTING { closed }
+        %%    }
+        %%    TRANSITIONS{
+        %%        closed  -> open    [ openDoors ]
+        %%        open -> summonHeld [ summonPress ]
+        %%        summonHeld -> open [ summonRelease ]
+        %%        open -> closed     [ closeDoors ]
+        %%    }
+        %%}
+
+        PROPERTY time1{
+            STATES{
+                BAD { bad }
+                NORMAL { open openPlusReq closedPlusReq closedAndMoving }
+                STARTING { closed }
+            }
+            TRANSITIONS{
+                closed -> open [ openDoors ]
+                open -> closed [ closeDoors ]
+                open -> openPlusReq [ floorRequest ]
+                closed -> closedPlusReq [ floorRequest \\time1Clock.reset(); ]
+                openPlusReq -> closedPlusReq [ closeDoors \\time1Clock.reset(); ]
+                closedPlusReq -> bad [ clock1 ]
+                closedPlusReq -> closedAndMoving [ startOrStopMoving \isNowMoving ]
+                closed -> closedAndMoving [ startOrStopMoving \isNowMoving ]
+                closedAndMoving -> closed [ startOrStopMoving \!isNowMoving ]
+            }
+        }
+
+        PROPERTY time2{
+            STATES{
+                BAD { bad }
+                NORMAL { open canClose }
+                STARTING { closingOrClosed }
+            }
+            TRANSITIONS{
+                closingOrClosed -> open [ openDoors \\time2Clock.reset(); ]
+                open -> bad [ startClosingDoors ]
+                open -> canClose [ clock2 ]
+                canClose -> closingOrClosed [ startClosingDoors ]
+            }
+        }
+    }
+
+    FOREACH(Shaft s){
+
+        EVENTS{
+            animateUp(int currFloor) = {Shaft s1.animateUp(currFloor)} where s = s1;
+            animateDn(int currFloor) = {Shaft s1.animateDown(currFloor)} where s = s1;
+        }
+
+        PROPERTY invar2{
+            STATES{ BAD { bad } STARTING { start } }
+            TRANSITIONS{
+                start -> bad [ animateUp \currFloor == s.numFloors - 1 ]
+                start -> bad [ animateDn \currFloor == 0 ]
+            }
+        }
+    }
+}
+
+METHODS {
+    ArrayList<Lift> getBestLifts(Lift[] lifts, int floor, Map<Lift,Integer> destinations) {
+
+        final ArrayList<Lift> result = new ArrayList<Lift>();
+
+        // Search for moving lifts which will pass through the floor
+        for (Lift lift : lifts) {
+            if (destinations.containsKey(lift) && (
+                    (lift.getFloor() <= floor && destinations.get(lift) >= floor) ||
+                    (lift.getFloor() >= floor && destinations.get(lift) <= floor)
+            )) {
+                result.add(lift);
+            }
+        }
+
+        // Search for closest stationary lifts
+        int distance = -1;
+        while (result.size() == 0) {
+            distance++;
+            for (Lift lift : lifts) {
+                if (!lift.isMoving() && lift.distanceFromFloor(floor) == distance) {
+                    result.add(lift);
+                }
+            }
+        }
+
+        return result;
+    }
+}

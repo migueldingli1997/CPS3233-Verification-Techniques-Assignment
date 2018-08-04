@@ -1,0 +1,39 @@
+MODULE main
+    VAR
+        req: array 1..3 of boolean;
+        dst: destination(req,pos.out);
+        pos: position(req,dst.out);
+    LTLSPEC
+        G ( G(!(req[1] | req[2] | req[3])) -> G dst.out=0 )
+    LTLSPEC
+        G ( G(!(req[1] | req[2] | req[3])) -> F G dst.out=0 )
+    LTLSPEC
+        G ( G(!(req[1] | req[2] | req[3])) -> (F dst.out=0 & (dst.out=0 -> G dst.out=0)) )
+    CTLSPEC
+        AG ( pos.out=3 -> EF (pos.out < 3) )
+    CTLSPEC
+        (AG !(req[1] & req[2])) -> !(AG ( pos.out=3 -> EF (pos.out < 3) ))
+
+MODULE position(req,dst)
+    VAR
+        out: 1..3;
+    INIT
+        out = 1
+    TRANS
+        ((dst=out | dst=0) -> next(out)=out)
+      & ((dst > out) -> next(out)=out + 1)
+      & ((dst < out & dst > 0) -> next(out)=out - 1)
+
+MODULE destination(req,pos)
+    VAR
+        out: 0..3;
+    INIT
+        out = 0
+    TRANS
+        (out=pos -> next(out)=0)
+      & ((out!=pos & out>0) -> next(out)=out)
+      & ( (!req[1] & !req[2] & !req[3])
+        | (req[1] & next(out)=1)
+        | (req[2] & next(out)=2)
+        | (req[3] & next(out)=3)
+        );

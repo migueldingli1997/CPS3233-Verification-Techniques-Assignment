@@ -1,0 +1,29 @@
+MODULE main
+    VAR
+        reqLift: array 1..3 of boolean;
+        liftNow: 1..3;
+        liftDst: 0..3;
+    ASSIGN
+        init(liftNow) := 1;
+        next(liftNow) :=
+            case
+                liftDst=liftNow | liftDst=0: liftNow;
+                liftDst > liftNow: liftNow + 1;
+                TRUE: liftNow - 1;
+            esac;
+        init(liftDst) := 0;
+        next(liftDst) :=
+            case
+                liftDst=liftNow: 0;
+                liftDst!=0: liftDst;
+                TRUE:
+                    reqLift[1]?
+                        (reqLift[2]?
+                            (reqLift[3]? {1,2,3}:{1,2}):
+                            (reqLift[3]? {1,3}:1)):
+                        (reqLift[2]?
+                            (reqLift[3]? {2,3}:2):
+                            (reqLift[3]? 3:0));
+            esac;
+    LTLSPEC
+        G ( G(!(reqLift[1] | reqLift[2] | reqLift[3])) -> F G liftDst=0 )

@@ -1,0 +1,20 @@
+MODULE main
+    VAR
+        heating: boolean;
+        temperature: 10..40;
+        lowTempTime: 0..4;
+        heaterOnTime: 0..3;
+    ASSIGN
+        init(lowTempTime) := 0;
+        next(lowTempTime) :=
+            temperature < 23 ?
+                (lowTempTime=4? 4: lowTempTime+1):0;
+        init(heaterOnTime) := 0;
+        next(heaterOnTime) :=
+            heating ?
+                (heaterOnTime=3? 3: heaterOnTime+1):0;
+        heating := lowTempTime=4 | (heaterOnTime > 0 & heaterOnTime < 3);
+    LTLSPEC
+        G(!(heating & X !heating & X X heating));
+    LTLSPEC
+        G(!(!heating & X heating & X X !heating));

@@ -1,0 +1,54 @@
+MODULE main
+    VAR
+        u1: user(lock.ack1);
+        u2: user(lock.ack2);
+        lock: manager(u1.req,u2.req,rel);
+    DEFINE
+        rel := u1.rel | u2.rel;
+    LTLSPEC
+        G !(u1.mode=CRITICAL & u2.mode=CRITICAL);
+    LTLSPEC
+        G ( (u2.req & !(X G u1.mode=CRITICAL)) -> X F u2.mode=CRITICAL ) &
+        G ( (u1.req & !(X G u2.mode=CRITICAL)) -> X F u1.mode=CRITICAL )
+
+MODULE user(ack)
+    VAR
+        req: boolean;
+        rel: boolean;
+        mode: {IDLE,ENTERING,CRITICAL,EXITING};
+    ASSIGN
+        req := mode=ENTERING;
+        rel := mode=EXITING;
+        init(mode) := IDLE;
+        next(mode) :=
+            case
+                mode=IDLE: {IDLE,ENTERING};
+                mode=CRITICAL: {CRITICAL,EXITING};
+                mode=EXITING: IDLE;
+                mode=ENTERING & ack: CRITICAL;
+                TRUE: ENTERING;
+            esac;
+
+MODULE manager(req1,req2,rel)
+    VAR
+        ack1: boolean;
+        ack2: boolean;
+        mode: {AVAILABLE, LOCKED};
+        priority: 1..2;
+    ASSIGN
+        ack1 := req1 & (!req2 | priority=1) & mode=AVAILABLE;
+        ack2 := req2 & (!req1 | priority=2) & mode=AVAILABLE;
+        init(mode) := AVAILABLE;
+        next(mode) :=
+            case
+                ack1 | ack2: LOCKED;
+                rel: AVAILABLE;
+                TRUE: mode;
+            esac;
+        init(priority) := 1;
+        next(priority) :=
+            case
+                ack1 & priority=1: 2;
+                ack2 & priority=2: 1;
+                TRUE: priority;
+            esac;
